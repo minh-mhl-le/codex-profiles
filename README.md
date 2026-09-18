@@ -41,6 +41,8 @@ cd codex-profiles
 zsh scripts/install-app.sh
 ```
 
+The installer removes its generated `dist/Codex Profiles.app` bundle after the copy succeeds, so `/Applications/Codex Profiles.app` is the only installed app Spotlight finds. Use `zsh scripts/build-app.sh` when you intentionally need a local build artifact.
+
 Codex Profiles appears only in the menu bar—there is no Dock icon. On the first Keychain prompt, choose **Always Allow** so saved profiles can load without asking every time.
 
 The app is built and ad-hoc signed on your Mac. There is no downloadable binary yet; a signed and notarized release will come later.
@@ -113,6 +115,8 @@ open "dist/Codex Profiles.app"
 ```
 
 The Swift package has no third-party dependencies. The app bundle is written to `dist/`.
+
+The install script cleans up that generated bundle after a successful install; this keeps the installed app from appearing twice in Spotlight.
 
 To update an existing checkout:
 

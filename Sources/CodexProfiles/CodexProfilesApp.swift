@@ -7,7 +7,7 @@ import ServiceManagement
 import SwiftUI
 
 enum AppMetadata {
-    static let version = "0.1.0"
+    static let version = "0.1.1"
 }
 
 enum DemoScenario: String {

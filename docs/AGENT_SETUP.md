@@ -59,7 +59,7 @@ Read `scripts/build-app.sh` and `scripts/install-app.sh`, then run:
 zsh scripts/install-app.sh
 ```
 
-The installer builds a release executable, creates an ad-hoc signed app bundle, copies it to `/Applications`, and opens it. It does not read Codex credentials.
+The installer builds a release executable, creates an ad-hoc signed app bundle, copies it to `/Applications`, removes the generated `dist/Codex Profiles.app` bundle after a successful copy, and opens the installed app. It does not read Codex credentials.
 
 ## 4. Verify the installation
 
@@ -68,6 +68,7 @@ Use non-sensitive checks:
 ```sh
 test -x "/Applications/Codex Profiles.app/Contents/MacOS/CodexProfiles"
 codesign --verify --deep --strict "/Applications/Codex Profiles.app"
+test ! -e "dist/Codex Profiles.app"
 pgrep -x CodexProfiles
 ```
 
