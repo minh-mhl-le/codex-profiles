@@ -2,7 +2,7 @@
 
 **Switch Codex accounts from the macOS menu bar and see each account’s usage before you switch.**
 
-Codex Profiles is a tiny, unofficial companion for people who use the Codex desktop app with more than one ChatGPT account. It keeps inactive credentials in macOS Keychain, shows saved accounts together, and safely places only the selected account in Codex’s live auth file.
+Codex Profiles is a tiny companion for people who use the Codex desktop app with more than one ChatGPT account. It keeps inactive credentials in macOS Keychain, shows saved accounts together, and safely places only the selected account in Codex’s live auth file.
 
 <p align="center">
   <img src="docs/images/codex-profiles.png" width="430" alt="Codex Profiles showing three saved accounts and the active account's five-hour and weekly usage" />
