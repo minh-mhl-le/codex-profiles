@@ -9,7 +9,7 @@ Codex Profiles is a tiny, unofficial companion for people who use the Codex desk
 </p>
 
 > [!IMPORTANT]
-> Codex Profiles is an experimental power-user utility. It depends on Codex desktop internals that may change. It is independent of and unaffiliated with OpenAI.
+> Codex Profiles is an experimental power-user utility. It depends on Codex desktop internals that may change. 
 
 ## Why it exists
 
