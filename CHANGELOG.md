@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - 2026-09-18
+
+- Show five-hour and weekly capacity as percentage remaining instead of percentage used.
+- Fill usage bars from full to empty as remaining capacity decreases.
+- Use blue for healthy capacity, orange below 30% remaining, and red below 10% remaining.
+
 ## 0.1.2 - 2026-09-18
 
 - Open the profiles panel automatically when Codex Profiles starts.

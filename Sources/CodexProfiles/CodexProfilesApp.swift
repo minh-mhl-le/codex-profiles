@@ -7,7 +7,7 @@ import ServiceManagement
 import SwiftUI
 
 enum AppMetadata {
-    static let version = "0.1.2"
+    static let version = "0.1.3"
 }
 
 enum DemoScenario: String {
@@ -37,6 +37,11 @@ struct UsageBucket: Identifiable, Equatable {
     let usedPercent: Double?
     let resetsAt: Date?
     let windowDurationMinutes: Int?
+
+    var remainingPercent: Double? {
+        guard let usedPercent else { return nil }
+        return min(max(100 - usedPercent, 0), 100)
+    }
 }
 
 struct UsageSnapshot: Equatable {
@@ -1377,7 +1382,7 @@ struct UsageSummaryView: View {
         if let snapshot, !snapshot.buckets.isEmpty {
             HStack(spacing: 5) {
                 ForEach(snapshot.buckets.prefix(2)) { bucket in
-                    Text("\(bucket.name) \(bucket.usedPercent.map { "\(Int($0.rounded()))%" } ?? "—")")
+                    Text("\(bucket.name) \(bucket.remainingPercent.map { "\(Int($0.rounded()))% left" } ?? "—")")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -1400,11 +1405,11 @@ struct UsageBucketView: View {
             HStack {
                 Text(bucket.name).font(.caption)
                 Spacer()
-                Text(bucket.usedPercent.map { "\(Int($0.rounded()))% used" } ?? "Unavailable")
+                Text(bucket.remainingPercent.map { "\(Int($0.rounded()))% remaining" } ?? "Unavailable")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            ProgressView(value: (bucket.usedPercent ?? 0) / 100)
-                .tint(color(for: bucket.usedPercent))
+            ProgressView(value: (bucket.remainingPercent ?? 0) / 100)
+                .tint(color(for: bucket.remainingPercent))
             if let reset = bucket.resetsAt {
                 Text("Resets \(reset, style: .relative)")
                     .font(.caption2).foregroundStyle(.secondary)
@@ -1412,11 +1417,11 @@ struct UsageBucketView: View {
         }
     }
 
-    private func color(for used: Double?) -> Color {
-        guard let used else { return .secondary }
-        if used >= 90 { return .red }
-        if used >= 70 { return .orange }
-        return .accentColor
+    private func color(for remaining: Double?) -> Color {
+        guard let remaining else { return .secondary }
+        if remaining < 10 { return .red }
+        if remaining < 30 { return .orange }
+        return .blue
     }
 }
 
