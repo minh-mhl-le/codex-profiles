@@ -7,7 +7,7 @@ import ServiceManagement
 import SwiftUI
 
 enum AppMetadata {
-    static let version = "0.1.1"
+    static let version = "0.1.2"
 }
 
 enum DemoScenario: String {
@@ -939,12 +939,14 @@ final class SettingsStore: ObservableObject {
     static let shared = SettingsStore()
 
     private let launchAtLoginKey = "launchAtLogin"
+    private let openPanelAtLaunchKey = "openPanelAtLaunch"
     private let refreshOnOpenKey = "refreshOnOpen"
     private let openCodexAfterSwitchKey = "openCodexAfterSwitch"
     private let soundEffectsKey = "soundEffects"
     private let isDemoMode: Bool
 
     @Published private(set) var launchAtLogin: Bool
+    @Published private(set) var openPanelAtLaunch: Bool
     @Published private(set) var refreshOnOpen: Bool
     @Published private(set) var openCodexAfterSwitch: Bool
     @Published private(set) var soundEffects: Bool
@@ -953,6 +955,7 @@ final class SettingsStore: ObservableObject {
         isDemoMode = DemoScenario.current != nil
         if isDemoMode {
             launchAtLogin = false
+            openPanelAtLaunch = false
             refreshOnOpen = true
             openCodexAfterSwitch = true
             soundEffects = true
@@ -961,6 +964,9 @@ final class SettingsStore: ObservableObject {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: launchAtLoginKey) == nil {
             defaults.set(false, forKey: launchAtLoginKey)
+        }
+        if defaults.object(forKey: openPanelAtLaunchKey) == nil {
+            defaults.set(true, forKey: openPanelAtLaunchKey)
         }
         if defaults.object(forKey: refreshOnOpenKey) == nil {
             defaults.set(true, forKey: refreshOnOpenKey)
@@ -972,6 +978,7 @@ final class SettingsStore: ObservableObject {
             defaults.set(true, forKey: soundEffectsKey)
         }
         launchAtLogin = defaults.bool(forKey: launchAtLoginKey)
+        openPanelAtLaunch = defaults.bool(forKey: openPanelAtLaunchKey)
         refreshOnOpen = defaults.bool(forKey: refreshOnOpenKey)
         openCodexAfterSwitch = defaults.bool(forKey: openCodexAfterSwitchKey)
         soundEffects = defaults.bool(forKey: soundEffectsKey)
@@ -985,6 +992,13 @@ final class SettingsStore: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: launchAtLoginKey)
         if enabled { try? SMAppService.mainApp.register() }
         else { try? SMAppService.mainApp.unregister() }
+    }
+
+    func setOpenPanelAtLaunch(_ enabled: Bool) {
+        InteractionFeedback.shared.play()
+        guard !isDemoMode else { return }
+        openPanelAtLaunch = enabled
+        UserDefaults.standard.set(enabled, forKey: openPanelAtLaunchKey)
     }
 
     func setRefreshOnOpen(_ enabled: Bool) {
@@ -1443,6 +1457,7 @@ struct SettingsView: View {
         Form {
             Section("General") {
                 Toggle("Launch at Login", isOn: Binding(get: { settings.launchAtLogin }, set: { settings.setLaunchAtLogin($0) }))
+                Toggle("Open panel at launch", isOn: Binding(get: { settings.openPanelAtLaunch }, set: { settings.setOpenPanelAtLaunch($0) }))
                 Toggle("Refresh usage when opened", isOn: Binding(get: { settings.refreshOnOpen }, set: { settings.setRefreshOnOpen($0) }))
                 Toggle("Open Codex after switching", isOn: Binding(get: { settings.openCodexAfterSwitch }, set: { settings.setOpenCodexAfterSwitch($0) }))
                 Toggle("Sound effects", isOn: Binding(get: { settings.soundEffects }, set: { settings.setSoundEffects($0) }))
@@ -1513,6 +1528,8 @@ final class StatusBarController: NSObject {
     private let model: AppModel
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private var localClickMonitor: Any?
+    private var globalClickMonitor: Any?
 
     init(model: AppModel, onSettings: @escaping () -> Void) {
         self.model = model
@@ -1534,23 +1551,70 @@ final class StatusBarController: NSObject {
             button.setAccessibilityLabel("Codex Profiles")
         }
 
-        popover.behavior = .transient
+        // Application-defined behavior keeps the automatic reveal visible while
+        // this accessory app remains in the background. The click monitors below
+        // preserve the usual click-away dismissal behavior.
+        popover.behavior = .applicationDefined
         popover.contentSize = NSSize(width: 332, height: 430)
         popover.contentViewController = NSHostingController(rootView: MenuBarView(model: model, onSettings: onSettings))
+
+        installDismissalMonitors()
+        scheduleAutomaticPresentation()
     }
 
     @objc private func togglePopover(_ sender: Any?) {
-        guard let button = statusItem.button else { return }
-        InteractionFeedback.shared.play()
         if popover.isShown {
+            InteractionFeedback.shared.play()
             popover.performClose(sender)
         } else {
-            model.prepareForPresentation()
-            model.markPopoverOpened()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            NSApp.activate(ignoringOtherApps: true)
-            Task { await model.open() }
+            presentPopover(activate: true, playSound: true)
         }
+    }
+
+    private func presentPopover(activate: Bool, playSound: Bool) {
+        guard let button = statusItem.button, !popover.isShown else { return }
+        if playSound { InteractionFeedback.shared.play() }
+        model.prepareForPresentation()
+        model.markPopoverOpened()
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        if activate { NSApp.activate(ignoringOtherApps: true) }
+        Task { await model.open() }
+    }
+
+    private func scheduleAutomaticPresentation() {
+        guard model.settings.openPanelAtLaunch else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.model.settings.openPanelAtLaunch, !self.popover.isShown else { return }
+            self.presentPopover(activate: false, playSound: false)
+
+            guard !self.popover.isShown else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+                guard let self, self.model.settings.openPanelAtLaunch, !self.popover.isShown else { return }
+                self.presentPopover(activate: false, playSound: false)
+            }
+        }
+    }
+
+    private func installDismissalMonitors() {
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            self?.dismissPopoverIfNeeded(at: NSEvent.mouseLocation)
+            return event
+        }
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.dismissPopoverIfNeeded(at: NSEvent.mouseLocation)
+            }
+        }
+    }
+
+    private func dismissPopoverIfNeeded(at point: NSPoint) {
+        guard popover.isShown else { return }
+        let popoverFrame = popover.contentViewController?.view.window?.frame ?? .zero
+        let statusFrame = statusItem.button?.window.map { window in
+            window.convertToScreen(statusItem.button?.frame ?? .zero)
+        } ?? .zero
+        guard !popoverFrame.contains(point), !statusFrame.contains(point) else { return }
+        popover.close()
     }
 }
 

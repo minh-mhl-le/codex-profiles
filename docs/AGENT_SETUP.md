@@ -1,6 +1,6 @@
 # Agent setup
 
-This guide is for a local coding agent setting up Codex Profiles on a user’s Mac. The expected result is a locally built app installed at `/Applications/Codex Profiles.app`, launched and visible in the menu bar.
+This guide is for a local coding agent setting up Codex Profiles on a user’s Mac. The expected result is a locally built app installed at `/Applications/Codex Profiles.app`, launched and visible in the menu bar. The profiles panel opens automatically after launch by default; this can be disabled later in Settings.
 
 ## Safety contract
 
@@ -72,7 +72,7 @@ test ! -e "dist/Codex Profiles.app"
 pgrep -x CodexProfiles
 ```
 
-Confirm that the Codex Profiles icon is visible in the menu bar. Do not open or inspect credential files while troubleshooting.
+Confirm that the Codex Profiles icon is visible in the menu bar and that its panel opens automatically after launch. If the user has disabled **Open panel at launch**, the icon remains available for manual access. Do not open or inspect credential files while troubleshooting.
 
 ## 5. Hand control to the user
 

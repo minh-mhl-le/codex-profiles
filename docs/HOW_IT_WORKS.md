@@ -13,6 +13,10 @@ Codex Profiles is a small companion around the authentication state used by the 
 
 The repository stores no credentials.
 
+## Launch behavior
+
+The profiles panel opens automatically shortly after Codex Profiles starts, including when it launches at login. This reveal is silent and does not activate Codex Profiles over the app the user is working in. Disable **Open panel at launch** in Settings to return to menu-bar-only startup.
+
 ## Adding an account
 
 Add account starts the official ChatGPT login request through Codex’s bundled `codex app-server`. The browser completes authentication. Codex Profiles then stores the returned auth data in Keychain without changing the currently active Codex account.

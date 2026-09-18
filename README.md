@@ -43,7 +43,7 @@ zsh scripts/install-app.sh
 
 The installer removes its generated `dist/Codex Profiles.app` bundle after the copy succeeds, so `/Applications/Codex Profiles.app` is the only installed app Spotlight finds. Use `zsh scripts/build-app.sh` when you intentionally need a local build artifact.
 
-Codex Profiles appears only in the menu bar—there is no Dock icon. On the first Keychain prompt, choose **Always Allow** so saved profiles can load without asking every time.
+Codex Profiles appears only in the menu bar—there is no Dock icon. Its panel opens automatically after the app starts by default; turn off **Open panel at launch** in Settings if you prefer a quieter launch. On the first Keychain prompt, choose **Always Allow** so saved profiles can load without asking every time.
 
 The app is built and ad-hoc signed on your Mac. There is no downloadable binary yet; a signed and notarized release will come later.
 
@@ -90,6 +90,7 @@ Never post `auth.json`, tokens, cookies, Keychain contents, or unredacted creden
 The separate Settings window includes:
 
 - Launch at Login
+- Open panel at launch
 - Refresh usage when opened
 - Open Codex after switching
 - Sound effects
@@ -98,6 +99,8 @@ The separate Settings window includes:
 ## Troubleshooting
 
 **The menu-bar icon is missing:** Open System Settings → Control Center and make sure macOS is not hiding it. Menu-bar managers may also place new items in a hidden section.
+
+**The panel opens when I do not want it to:** Open Settings and turn off **Open panel at launch**. The menu-bar icon remains available for manual access.
 
 **Keychain asks every time:** Choose **Always Allow** for the Codex Profiles Keychain item.
 
