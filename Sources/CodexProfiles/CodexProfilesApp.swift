@@ -7,7 +7,7 @@ import ServiceManagement
 import SwiftUI
 
 enum AppMetadata {
-    static let version = "0.1.3"
+    static let version = "0.1.4"
 }
 
 enum DemoScenario: String {
@@ -1279,14 +1279,19 @@ struct ProfileRow: View {
                         HStack(spacing: 5) {
                             Text(profile.name)
                                 .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                             if isCurrent {
                                 Text("ACTIVE")
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundStyle(.tint)
+                                    .fixedSize()
                             }
                         }
                         if !isExpanded { UsageSummaryView(snapshot: snapshot) }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
                     Spacer(minLength: 4)
                 }
 
@@ -1379,14 +1384,12 @@ struct UsageSummaryView: View {
     let snapshot: UsageSnapshot?
 
     var body: some View {
-        if let snapshot, !snapshot.buckets.isEmpty {
-            HStack(spacing: 5) {
-                ForEach(snapshot.buckets.prefix(2)) { bucket in
-                    Text("\(bucket.name) \(bucket.remainingPercent.map { "\(Int($0.rounded()))% left" } ?? "—")")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
+        if let summary {
+            Text(summary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         } else if snapshot?.isLoading == true {
             Text("Refreshing…").font(.caption2).foregroundStyle(.secondary)
         } else if snapshot?.error != nil {
@@ -1394,6 +1397,13 @@ struct UsageSummaryView: View {
         } else {
             Text("No usage yet").font(.caption2).foregroundStyle(.secondary)
         }
+    }
+
+    private var summary: String? {
+        guard let snapshot, !snapshot.buckets.isEmpty else { return nil }
+        return snapshot.buckets.prefix(2).map { bucket in
+            "\(bucket.name) \(bucket.remainingPercent.map { "\(Int($0.rounded()))% left" } ?? "—")"
+        }.joined(separator: "    ")
     }
 }
 
