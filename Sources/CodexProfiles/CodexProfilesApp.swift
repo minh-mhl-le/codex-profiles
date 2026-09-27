@@ -259,12 +259,22 @@ private struct AppServerResult {
 
 final class CodexBinaryResolver {
     func resolve() -> URL? {
-        let candidates: [URL] = [
-            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex")
-                .map { $0.appendingPathComponent("Contents/Resources/codex") },
-            URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex"),
-            URL(fileURLWithPath: "/Applications/Codex.app/Contents/Resources/codex"),
+        let applications: [URL] = [
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex"),
+            URL(fileURLWithPath: "/Applications/ChatGPT.app"),
+            URL(fileURLWithPath: "/Applications/Codex.app"),
         ].compactMap { $0 }
+
+        return resolve(in: applications)
+    }
+
+    func resolve(in applications: [URL]) -> URL? {
+        let candidates = applications.flatMap { application in
+            [
+                application.appendingPathComponent("Contents/Resources/codex"),
+                application.appendingPathComponent("Contents/Resources/codex-cli/bin/codex"),
+            ]
+        }
 
         return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0.path) })
     }

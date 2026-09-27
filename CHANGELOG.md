@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Find the Codex App Server executable in the updated `codex-cli/bin` app bundle layout.
+
 ## 0.1.4 - 2026-09-18
 
 - Keep compact usage summaries on one horizontal line across the profile card.
