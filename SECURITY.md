@@ -27,6 +27,18 @@ Security fixes are made against the latest published source release. v0.1.x is e
 - The live Codex auth file is written with owner-only permissions.
 - Account switches are blocked while Codex reports active work.
 - A failed switch restores the previous live auth when possible.
-- There is no telemetry, credential export, or background account polling.
+- There is no telemetry or background account polling.
+- Credential handoff to local RATH workers is disabled by default. Consent and
+  the explicit profile allowlist are stored in the app's Keychain item; ordinary
+  user defaults do not enable the helper. Policy queries are scoped to one
+  default keychain so search-list items cannot shadow consent. An upgrade requires fresh opt-in.
+  It requires the user's Settings opt-in and explicit selection of every allowed profile.
+  The helper accepts one explicit profile and job ID, verifies refreshed account
+  identity, and releases credentials only on a captured stdout pipe.
+- Handoff verification uses the existing isolated app-server flow: credentials
+  briefly reside in a 0600 file inside a random 0700 temporary `CODEX_HOME`, which
+  is removed when the request finishes. Rotated credentials return to Keychain.
+- The receiving RATH process must keep payloads out of logs, diagnostics and
+  persistent state. A job ID scopes delivery; it does not revoke bearer tokens.
 
 This project is independent of and unaffiliated with OpenAI.

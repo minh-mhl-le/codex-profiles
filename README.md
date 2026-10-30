@@ -81,7 +81,9 @@ Read [How it works](docs/HOW_IT_WORKS.md) for the storage and switching model.
 - Only the active account is placed in Codex’s live `auth.json`.
 - Usage checks run in isolated temporary `CODEX_HOME` directories.
 - Usage refreshes only when the panel opens or you press Refresh.
-- There is no telemetry, background polling, credential export, or automatic account selection.
+- There is no telemetry, background polling, or automatic account selection.
+- Optional local RATH worker handoff is disabled until you enable it and select
+  allowed profiles in Settings. See [RATH handoff](docs/RATH_HANDOFF.md).
 
 Never post `auth.json`, tokens, cookies, Keychain contents, or unredacted credential-bearing logs in an issue. Report auth or credential vulnerabilities privately through [GitHub Security Advisories](https://github.com/minh-mhl-le/codex-profiles/security/advisories/new).
 
@@ -95,6 +97,7 @@ The separate Settings window includes:
 - Open Codex after switching
 - Sound effects
 - Delete saved profiles
+- Optional RATH local worker handoff and its allowed profile pool
 
 ## Troubleshooting
 

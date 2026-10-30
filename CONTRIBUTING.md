@@ -18,6 +18,17 @@ Logic tests use XCTest and require a full Xcode installation:
 swift test
 ```
 
+When Command Line Tools cannot import XCTest, exercise the RATH handoff's
+fake-only service tests with:
+
+```sh
+zsh scripts/test-rath-handoff.sh
+```
+
+This runner compiles the production handoff service with its existing test cases
+and inert storage/app-server stubs. It cannot access real profiles or Keychain,
+and does not replace the full app build or macOS UI verification.
+
 Build the app bundle with:
 
 ```sh
