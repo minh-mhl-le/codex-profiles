@@ -48,6 +48,10 @@ struct UsageSnapshot: Equatable {
     var email: String?
     var planType: String?
     var accountID: String? = nil
+    var ordinaryUsageAllowed: Bool? = nil
+    var rateLimitReachedType: String? = nil
+    var spendControlReached: Bool? = nil
+    var individualLimit: RathUsageGate.IndividualLimit? = nil
     var buckets: [UsageBucket] = []
     var lastRefreshed: Date?
     var error: String?
@@ -106,6 +110,54 @@ enum ProfileError: LocalizedError {
 
 final class KeychainStore {
     private let service = "com.codexprofiles.auth"
+    private let handoffPolicyService = "com.codexprofiles.rath-handoff"
+
+    private func handoffPolicyKeychain() throws -> SecKeychain {
+        var keychain: SecKeychain?
+        let status = SecKeychainCopyDefault(&keychain)
+        guard status == errSecSuccess, let keychain else { throw ProfileError.keychain(status) }
+        return keychain
+    }
+
+    func readHandoffPolicy() throws -> Data? {
+        let keychain = try handoffPolicyKeychain()
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: handoffPolicyService,
+            kSecAttrAccount as String: "policy",
+            kSecMatchSearchList as String: [keychain],
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess, let data = result as? Data else {
+            throw ProfileError.keychain(status)
+        }
+        return data
+    }
+
+    func saveHandoffPolicy(_ data: Data) throws {
+        guard data.count <= 4096 else { throw ProfileError.keychain(errSecParam) }
+        let keychain = try handoffPolicyKeychain()
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: handoffPolicyService,
+            kSecAttrAccount as String: "policy",
+            kSecMatchSearchList as String: [keychain],
+        ]
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else { throw ProfileError.keychain(updateStatus) }
+
+        var item = query
+        item[kSecUseKeychain as String] = keychain
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw ProfileError.keychain(status) }
+    }
 
     func save(_ data: Data, for profileID: UUID) throws {
         let account = profileID.uuidString
@@ -114,7 +166,9 @@ final class KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updateStatus == errSecSuccess { return }
+        guard updateStatus == errSecItemNotFound else { throw ProfileError.keychain(updateStatus) }
 
         var item = query
         item[kSecValueData as String] = data
@@ -283,9 +337,9 @@ final class CodexBinaryResolver {
 final class AppServerClient: @unchecked Sendable {
     private let resolver = CodexBinaryResolver()
 
-    func readAccountAndUsage(auth: Data, codeHome: URL? = nil) async throws -> (UsageSnapshot, Data?) {
+    func readAccountAndUsage(auth: Data, codeHome: URL? = nil, refreshToken: Bool = false) async throws -> (UsageSnapshot, Data?) {
         try await Task.detached(priority: .utility) {
-            let result = try self.run(auth: auth, codeHome: codeHome, requestUsage: true, waitForLogin: false)
+            let result = try self.run(auth: auth, codeHome: codeHome, requestUsage: true, waitForLogin: false, refreshToken: refreshToken)
             let snapshot = try Self.snapshot(from: result)
             return (snapshot, result.refreshedAuth)
         }.value
@@ -341,7 +395,7 @@ final class AppServerClient: @unchecked Sendable {
         }.value
     }
 
-    private func run(auth: Data?, codeHome: URL?, requestUsage: Bool, waitForLogin: Bool) throws -> AppServerResult {
+    private func run(auth: Data?, codeHome: URL?, requestUsage: Bool, waitForLogin: Bool, refreshToken: Bool = false) throws -> AppServerResult {
         guard let binary = resolver.resolve() else { throw ProfileError.appServerUnavailable }
 
         let temporaryHome: URL
@@ -352,7 +406,7 @@ final class AppServerClient: @unchecked Sendable {
         } else {
             temporaryHome = FileManager.default.temporaryDirectory
                 .appendingPathComponent("codex-profiles-\(UUID().uuidString)", isDirectory: true)
-            try FileManager.default.createDirectory(at: temporaryHome, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: temporaryHome, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             ownsTemporaryHome = true
         }
         defer {
@@ -390,7 +444,7 @@ final class AppServerClient: @unchecked Sendable {
         if waitForLogin {
             try Self.send(["method": "account/login/start", "id": 2, "params": ["type": "chatgpt", "useHostedLoginSuccessPage": true, "appBrand": "codex"]], to: writer)
         } else {
-            try Self.send(["method": "account/read", "id": 2, "params": ["refreshToken": false]], to: writer)
+            try Self.send(["method": "account/read", "id": 2, "params": ["refreshToken": refreshToken]], to: writer)
             if requestUsage {
                 try Self.send(["method": "account/rateLimits/read", "id": 3, "params": [:]], to: writer)
             }
@@ -485,7 +539,11 @@ final class AppServerClient: @unchecked Sendable {
 
         buckets.sort { Self.windowRank($0.name) < Self.windowRank($1.name) }
         let accountID = result.rateLimits?["accountId"] as? String ?? account["accountId"] as? String
-        return UsageSnapshot(email: email, planType: planType, accountID: accountID, buckets: buckets, lastRefreshed: Date(), error: nil, isLoading: false)
+        let gate = RathUsageGate.parse(result.rateLimits ?? [:])
+        return UsageSnapshot(email: email, planType: planType, accountID: accountID,
+                             ordinaryUsageAllowed: gate.ordinaryUsageAllowed, rateLimitReachedType: gate.rateLimitReachedType,
+                             spendControlReached: gate.spendControlReached, individualLimit: gate.individualLimit,
+                             buckets: buckets, lastRefreshed: Date(), error: nil, isLoading: false)
     }
 
     private static func buckets(id: String, value: [String: Any]) -> [UsageBucket] {
@@ -965,6 +1023,9 @@ final class SettingsStore: ObservableObject {
     @Published private(set) var refreshOnOpen: Bool
     @Published private(set) var openCodexAfterSwitch: Bool
     @Published private(set) var soundEffects: Bool
+    @Published private(set) var rathHandoffEnabled = false
+    @Published private(set) var rathHandoffProfileIDs: Set<UUID> = []
+    @Published private(set) var rathHandoffError: String?
 
     private init() {
         isDemoMode = DemoScenario.current != nil
@@ -997,6 +1058,13 @@ final class SettingsStore: ObservableObject {
         refreshOnOpen = defaults.bool(forKey: refreshOnOpenKey)
         openCodexAfterSwitch = defaults.bool(forKey: openCodexAfterSwitchKey)
         soundEffects = defaults.bool(forKey: soundEffectsKey)
+        do {
+            let handoffPolicy = try RathHandoffPolicy.load(store: KeychainStore())
+            rathHandoffEnabled = handoffPolicy.enabled
+            rathHandoffProfileIDs = handoffPolicy.profileIDs
+        } catch {
+            rathHandoffError = "Secure RATH settings could not be read from Keychain. Handoff is unavailable until the settings can be read."
+        }
         if !launchAtLogin { try? SMAppService.mainApp.unregister() }
     }
 
@@ -1035,6 +1103,31 @@ final class SettingsStore: ObservableObject {
         guard !isDemoMode else { return }
         soundEffects = enabled
         UserDefaults.standard.set(enabled, forKey: soundEffectsKey)
+    }
+
+    func setRathHandoffEnabled(_ enabled: Bool) {
+        guard !isDemoMode else { return }
+        saveRathHandoffPolicy(enabled: enabled, profileIDs: rathHandoffProfileIDs)
+    }
+
+    func setRathHandoffProfile(_ id: UUID, allowed: Bool) {
+        guard !isDemoMode else { return }
+        var profileIDs = rathHandoffProfileIDs
+        if allowed { profileIDs.insert(id) }
+        else { profileIDs.remove(id) }
+        saveRathHandoffPolicy(enabled: rathHandoffEnabled, profileIDs: profileIDs)
+    }
+
+    private func saveRathHandoffPolicy(enabled: Bool, profileIDs: Set<UUID>) {
+        let policy = RathHandoffPolicy(enabled: enabled, profileIDs: profileIDs)
+        do {
+            try policy.save(to: KeychainStore())
+            rathHandoffEnabled = policy.enabled
+            rathHandoffProfileIDs = policy.profileIDs
+            rathHandoffError = nil
+        } catch {
+            rathHandoffError = "Secure RATH settings could not be saved to Keychain. The previous setting remains active."
+        }
     }
 }
 
@@ -1475,6 +1568,7 @@ struct RenameProfileView: View {
 
 struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
+    @ObservedObject var model: AppModel
     let onDeleteSavedProfiles: () -> Void
     @State private var showingDeleteConfirmation = false
 
@@ -1495,6 +1589,21 @@ struct SettingsView: View {
                 Text("Removes cached credentials from Keychain and local metadata. Codex’s active login is not changed.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            Section("RATH local workers") {
+                Toggle("Allow selected saved profiles for RATH", isOn: Binding(
+                    get: { settings.rathHandoffEnabled }, set: { settings.setRathHandoffEnabled($0) }))
+                Text("Allows local helper calls to release credentials to RATH workers. Select each allowed profile below. Credentials can access that account; only enable this for a trusted local RATH installation.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let error = settings.rathHandoffError {
+                    Text(error).font(.caption).foregroundStyle(.red)
+                }
+                ForEach(model.profiles) { profile in
+                    Toggle(profile.name, isOn: Binding(
+                        get: { settings.rathHandoffProfileIDs.contains(profile.id) },
+                        set: { settings.setRathHandoffProfile(profile.id, allowed: $0) }))
+                    .disabled(!settings.rathHandoffEnabled)
+                }
+            }
             Section("About") {
                 LabeledContent("Version", value: AppMetadata.version)
                 Text("An unofficial macOS account switcher for Codex.")
@@ -1513,7 +1622,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(14)
-        .frame(width: 470, height: 390)
+        .frame(width: 470, height: 580)
         .confirmationDialog("Delete all saved profiles?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
             Button("Delete Saved Profiles", role: .destructive) {
                 InteractionFeedback.shared.play()
@@ -1529,7 +1638,7 @@ struct SettingsView: View {
 @MainActor
 final class SettingsWindowController: NSWindowController {
     init(model: AppModel) {
-        let view = SettingsView(settings: model.settings, onDeleteSavedProfiles: { model.deleteAllSavedProfiles() })
+        let view = SettingsView(settings: model.settings, model: model, onDeleteSavedProfiles: { model.deleteAllSavedProfiles() })
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.title = "Codex Profiles Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
@@ -1660,11 +1769,22 @@ final class CodexProfilesAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-@main
 struct CodexProfilesApp: App {
     @NSApplicationDelegateAdaptor(CodexProfilesAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         Settings { EmptyView() }
+    }
+}
+
+@main
+enum CodexProfilesEntry {
+    @MainActor
+    static func main() async {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if !arguments.isEmpty {
+            exit(await RathHandoffCLI.run(arguments: arguments))
+        }
+        CodexProfilesApp.main()
     }
 }
